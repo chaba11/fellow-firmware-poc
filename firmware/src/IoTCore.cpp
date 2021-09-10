@@ -12,7 +12,7 @@
 #include "DeviceConfig.h"
 #include "DeviceState.h"
 
-Client *netClient;
+WiFiClientSecure *netClient;
 CloudIoTCoreDevice *device;
 CloudIoTCoreMqtt *mqtt;
 MQTTClient *mqttClient;
@@ -87,6 +87,7 @@ void mqttTask(void *p)
       if (globalState.online && !mqttClient->connected())
       {
         Serial.println("[MQTT] Not Connected, trying to connect to IoT Core...");
+        Serial.println(globalConfig.iotCorePrivateKey);
         globalState.connected = false;
         mqtt->mqttConnectAsync();
       }
@@ -135,8 +136,9 @@ void setupCloudIoT()
   }
 
   device = new CloudIoTCoreDevice(globalConfig.iotCoreProjectId, globalConfig.iotCoreRegion, globalConfig.iotCoreRegistry, globalConfig.deviceName, globalConfig.iotCorePrivateKey);
-
   netClient = new WiFiClientSecure();
+  // netClient->setInsecure();
+  netClient->setCACert(globalConfig.test_root_cert);
   mqttClient = new MQTTClient(512);
   mqttClient->setOptions(180, true, 1000); // keepAlive, cleanSession, timeout
   mqtt = new CloudIoTCoreMqtt(mqttClient, netClient, device);

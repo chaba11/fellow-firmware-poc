@@ -72,7 +72,7 @@ void setup()
   setupConfig();
   resetButton.attachLongPressStart(onResetPressStart);
   resetButton.attachLongPressStop(onResetPressStop);
-  resetButton.attachDoubleClick(onResetDoubleClicked);
+  onResetDoubleClicked();
 
   globalState.lastResetButtonTime = millis();
 
