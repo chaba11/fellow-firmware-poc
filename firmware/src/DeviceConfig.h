@@ -23,7 +23,7 @@ struct DeviceConfig
   const char *ntpPrimary = "time.google.com";
   const char *ntpSecondary = "pool.ntp.org";
 
-  uint resetPin = 0;
+  uint resetPin = 1;
   uint lightPin = 13;
   uint lightLedcChannel = 0;
   uint lightLedcFrequency = 5000;

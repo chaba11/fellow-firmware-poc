@@ -9,7 +9,7 @@ bool saveConfig()
   Serial.println("[DEBUG] Enter save config");
   if (!SPIFFS.exists(configFilePath))
   {
-    Serial.println("[ALGO] No existe");
+    Serial.println("[DEBUG] Config file doesn't exists");
     return true;
   } else {
     File file = SPIFFS.open(configFilePath, FILE_WRITE);

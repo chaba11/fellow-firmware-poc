@@ -138,8 +138,8 @@ void setupCloudIoT()
   device = new CloudIoTCoreDevice(globalConfig.iotCoreProjectId, globalConfig.iotCoreRegion, globalConfig.iotCoreRegistry, globalConfig.deviceName, globalConfig.iotCorePrivateKey);
 
   netClient = new WiFiClientSecure();
-  // netClient->setCACert(globalConfig.root_cert);
-  netClient->setInsecure();
+  netClient->setCACert(globalConfig.root_cert);
+  // netClient->setInsecure();
   Serial.println(ESP.getFreeHeap());
   mqttClient = new MQTTClient(512);
   mqttClient->setOptions(180, true, 1000); // keepAlive, cleanSession, timeout
