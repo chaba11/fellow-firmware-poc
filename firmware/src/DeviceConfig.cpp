@@ -6,7 +6,18 @@ const char *configFilePath = "/config.json";
 
 bool saveConfig()
 {
+  Serial.println("[DEBUG] Enter save config");
+  if (!SPIFFS.exists(configFilePath))
+  {
+    Serial.println("[ALGO] No existe");
+    return true;
+  } else {
+    File file = SPIFFS.open(configFilePath, FILE_WRITE);
+    Serial.println(file);
+    return true;
+  }
   File file = SPIFFS.open(configFilePath, FILE_WRITE);
+  Serial.println("[DEBUG] Finish save config");
   if (!file)
   {
     Serial.println("[CONFIG] Failed to create file to be saved");
@@ -78,7 +89,7 @@ void setupConfig()
   uint32_t highBytesChipId = (uint32_t)(chipId >> 16); // High 4 bytes
   //uint16_t lowBytesChipId = (uint16_t)chipId; // Low 2 bytes
   snprintf(globalConfig.deviceId, sizeof(globalConfig.deviceId), "%08X", highBytesChipId);
-  snprintf(globalConfig.deviceName, sizeof(globalConfig.deviceName), "LAMP_%08X", highBytesChipId);
+  snprintf(globalConfig.deviceName, sizeof(globalConfig.deviceName), "EKG_%08X", highBytesChipId);
 
   SPIFFS.begin(true);
 }

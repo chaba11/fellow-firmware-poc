@@ -1,151 +1,145 @@
-#include "IoTCore.h"
 
-#include <Client.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <MQTT.h>
+#include <Arduino.h>
+#include <OneButton.h>
 #include <ArduinoJson.h>
+#include <rom/rtc.h>
 
-#include <CloudIoTCore.h>
-#include <CloudIoTCoreMqtt.h>
-
+#include "Network.h"
+#include "NTP.h"
+#include "IoTCore.h"
+#include "Provisioning.h"
 #include "DeviceConfig.h"
 #include "DeviceState.h"
+#include "OTAUpdate.h"
 
-WiFiClientSecure *netClient;
-CloudIoTCoreDevice *device;
-CloudIoTCoreMqtt *mqtt;
-MQTTClient *mqttClient;
-unsigned long iat = 0;
-String jwt;
+#define POWERON_RESET 1
 
-void messageReceived(String &topic, String &payload)
+RESET_REASON lastResetReason;
+DeviceConfig globalConfig;
+DeviceState globalState;
+
+OneButton resetButton(globalConfig.resetPin, true);
+
+void onResetPressStart()
 {
-  globalState.connected = true;
-  Serial.println("[MQTT] incoming: " + topic + " - " + payload);
+  Serial.println("[RESET] Hold Start : " + String(millis()));
+  globalState.lastResetButtonTime = millis();
+}
 
-  if (payload.length() == 0)
+void onResetPressStop()
+{
+  Serial.println("[RESET] Hold Stop : " + String(millis()));
+  unsigned long diff = millis() - globalState.lastResetButtonTime;
+  int holdTimeSeconds = diff / 1000.0f;
+  Serial.println("[RESET] Hold Time : " + String(holdTimeSeconds) + "s");
+  if (holdTimeSeconds >= 5)
   {
-    Serial.println("[MQTT] Empty payload");
-    return;
-  }
-
-  if (!topic.endsWith("/commands"))
-  {
-    Serial.println("[MQTT] Handling only commands topic");
-    return;
-  }
-
-  StaticJsonDocument<128> doc;
-  DeserializationError error = deserializeJson(doc, payload);
-  if (error)
-  {
-    Serial.println("[MQTT] Failed to parse json");
-    return;
-  }
-  if (doc.containsKey("power"))
-  {
-    bool on = doc["power"] | false;
-    updateLampState(on);
-  }
-  if (doc.containsKey("brightness"))
-  {
-    int lampBrightness = doc["brightness"] | 0;
-    updateLampBrightness(lampBrightness);
+    clearConfig();
+    ESP.restart();
   }
 }
 
-String getJwt()
+void onResetDoubleClicked()
 {
-  iat = time(nullptr);
-  Serial.println("[MQTT] Refreshing JWT");
-  jwt = device->createJWT(iat, globalConfig.jwtExpSecs);
-  return jwt;
-}
-
-void publishState(String data)
-{
-  if (mqtt != NULL && mqttClient != NULL)
+  Serial.println("[RESET] Double Clicked : " + String(millis()));
+  if (!globalState.bleRunning)
   {
-    if (mqttClient->connected())
+    if (!globalState.bleSetup)
     {
-      Serial.println("[MQTT] Publishing data to IoT Core");
-      mqtt->publishTelemetry(data);
+      Serial.println("[RESET] Setup Provisioning");
+      setupProvisioning();
+    }
+    Serial.println("[RESET] Start Provisioning");
+    startProvisioningServer();
+  }
+  else
+  {
+    Serial.println("[RESET] Stop Provisioning");
+    stopProvisioningServer();
+  }
+}
+
+void setup()
+{
+  // Setup reset pin
+  Serial.begin(115200);
+
+  Serial.print("[INIT] App Version: ");
+  Serial.print(VERSION);
+  Serial.print(" - ");
+  Serial.println(VERSION_NAME);
+
+  setupConfig();
+  if (!globalState.bleRunning)
+  {
+    if (!globalState.bleSetup)
+    {
+      Serial.println("[RESET] Setup Provisioning");
+      setupProvisioning();
+    }
+    Serial.println("[RESET] Start Provisioning");
+    startProvisioningServer();
+  }
+  else
+  {
+    Serial.println("[RESET] Stop Provisioning");
+    stopProvisioningServer();
+  }
+
+  globalState.lastResetButtonTime = millis();
+
+  pinMode(globalConfig.lightPin, OUTPUT);
+  ledcSetup(globalConfig.lightLedcChannel, globalConfig.lightLedcFrequency, 8);
+  ledcAttachPin(globalConfig.lightPin, globalConfig.lightLedcChannel);
+
+  Serial.print("[INIT] Device ID: ");
+  Serial.println(globalConfig.deviceName);
+
+  loadConfig();
+
+  xTaskCreate(networkTask, "network", 4096, NULL, 5, NULL);
+  xTaskCreate(mqttTask, "mqtt", 4096 * 4, NULL, 5, NULL);
+  xTaskCreate(timeTask, "time", 4096, NULL, 4, NULL);
+}
+
+void loop()
+{
+  if (globalState.hasStateChanges)
+  {
+    globalState.hasStateChanges = false;
+    if (globalState.lampState)
+    {
+      int dutyCycle = map(globalState.lampBrightness, 0, 100, 0, 255);
+      ledcWrite(globalConfig.lightLedcChannel, dutyCycle);
+    }
+    else
+    {
+      ledcWrite(globalConfig.lightLedcChannel, 0);
+    }
+
+    if (globalState.bleRunning)
+    {
+      StaticJsonDocument<256> doc;
+      doc["id"] = globalConfig.deviceId;
+      doc["wifiSsid"] = globalConfig.wifiSsid;
+      doc["online"] = globalState.online;
+      doc["connected"] = globalState.connected;
+      doc["power"] = globalState.lampState == HIGH;
+      doc["brightness"] = globalState.lampBrightness;
+      String output;
+      serializeJson(doc, output);
+      updateBleStatus(output);
+    }
+
+    if (globalState.connected)
+    {
+      StaticJsonDocument<128> doc;
+      doc["power"] = globalState.lampState == HIGH;
+      doc["brightness"] = globalState.lampBrightness;
+      String output;
+      serializeJson(doc, output);
+      publishState(output);
     }
   }
-}
-
-void mqttTask(void *p)
-{
-  while (1)
-  {
-    if (mqtt != NULL && mqttClient != NULL)
-    {
-      mqtt->loop();
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-
-      if (globalState.online && !mqttClient->connected())
-      {
-        Serial.println("[MQTT] Not Connected, trying to connect to IoT Core...");
-        Serial.println(globalConfig.iotCorePrivateKey);
-        globalState.connected = false;
-        mqtt->mqttConnectAsync();
-      }
-      bool connected = mqttClient->connected();
-      if (globalState.connected != connected)
-      {
-        String state = connected ? "connected" : "not connected";
-        Serial.println("[MQTT] Connection state changed : " + state);
-        globalState.connected = connected;
-      }
-    }
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
-}
-
-void setupCloudIoT()
-{
-  if (strlen(globalConfig.iotCorePrivateKey) == 0)
-  {
-    Serial.println("[MQTT] Missing IoT Core Private Key");
-    return;
-  }
-
-  if (strlen(globalConfig.iotCoreProjectId) == 0)
-  {
-    Serial.println("[MQTT] Missing IoT Core Project Id");
-    return;
-  }
-
-  if (strlen(globalConfig.iotCoreRegion) == 0)
-  {
-    Serial.println("[MQTT] Missing IoT Core Region");
-    return;
-  }
-
-  if (strlen(globalConfig.iotCoreRegistry) == 0)
-  {
-    Serial.println("[MQTT] Missing IoT Core Registry Id");
-    return;
-  }
-
-  if (!globalState.online)
-  {
-    Serial.println("[MQTT] Not online");
-    return;
-  }
-
-  device = new CloudIoTCoreDevice(globalConfig.iotCoreProjectId, globalConfig.iotCoreRegion, globalConfig.iotCoreRegistry, globalConfig.deviceName, globalConfig.iotCorePrivateKey);
-  netClient = new WiFiClientSecure();
-  // netClient->setInsecure();
-  netClient->setCACert(globalConfig.test_root_cert);
-  mqttClient = new MQTTClient(512);
-  mqttClient->setOptions(180, true, 1000); // keepAlive, cleanSession, timeout
-  mqtt = new CloudIoTCoreMqtt(mqttClient, netClient, device);
-  mqtt->setUseLts(true);
-  mqtt->startMQTT();
-
-  globalState.connected = false;
-
-  Serial.println("[MQTT] Client started");
+  resetButton.tick();
 }

@@ -8,14 +8,14 @@
 struct DeviceConfig
 {
   // your network SSID (name)
-  char wifiSsid[50] = "Chabert_Wifi";
+  char wifiSsid[50] = "";
   // your network password (use for WPA)
-  char wifiPass[50] = "11111998";
+  char wifiPass[50] = "";
 
-  char iotCorePrivateKey[100] = "33:ea:59:18:c4:4f:5e:6c:90:c4:a7:ef:3b:3f:bc:ef:73:6d:05:16:a6:a2:e4:9d:f5:63:00:d5:c5:4f:1e:98";
-  char iotCoreRegion[50] = "us-central1";
-  char iotCoreRegistry[50] = "kettles-registry";
-  char iotCoreProjectId[50] = "fellowkettles";
+  char iotCorePrivateKey[100] = "";
+  char iotCoreRegion[50] = "";
+  char iotCoreRegistry[50] = "";
+  char iotCoreProjectId[50] = "";
 
   /* Values not save on storage */
   char deviceId[24] = "";
@@ -23,14 +23,13 @@ struct DeviceConfig
   const char *ntpPrimary = "time.google.com";
   const char *ntpSecondary = "pool.ntp.org";
 
-  uint resetPin = 1;
+  uint resetPin = 0;
   uint lightPin = 13;
   uint lightLedcChannel = 0;
   uint lightLedcFrequency = 5000;
   // Time (seconds) to expire token += 20 minutes for drift
   uint jwtExpSecs = 60 * 20; // Maximum 24H (3600*24)
-  const char *test_root_cert =
-
+  const char *root_cert =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIBxTCCAWugAwIBAgINAfD3nVndblD3QnNxUDAKBggqhkjOPQQDAjBEMQswCQYD\n"
     "VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzERMA8G\n"

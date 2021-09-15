@@ -70,9 +70,21 @@ void setup()
   Serial.println(VERSION_NAME);
 
   setupConfig();
-  resetButton.attachLongPressStart(onResetPressStart);
-  resetButton.attachLongPressStop(onResetPressStop);
-  onResetDoubleClicked();
+  if (!globalState.bleRunning)
+  {
+    if (!globalState.bleSetup)
+    {
+      Serial.println("[RESET] Setup Provisioning");
+      setupProvisioning();
+    }
+    Serial.println("[RESET] Start Provisioning");
+    startProvisioningServer();
+  }
+  else
+  {
+    Serial.println("[RESET] Stop Provisioning");
+    stopProvisioningServer();
+  }
 
   globalState.lastResetButtonTime = millis();
 
